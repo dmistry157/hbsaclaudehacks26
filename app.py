@@ -12,6 +12,18 @@ from api.variant_parser import parse_variant
 from claude_explainer import generate_explanation, READING_LEVELS
 from viewer import render_structure, render_placeholder
 
+
+def _significance_color(sig: str) -> str:
+    sig_lower = sig.lower()
+    if "pathogenic" in sig_lower and "benign" not in sig_lower:
+        return "#ff4b4b"
+    if "benign" in sig_lower:
+        return "#21c354"
+    if "uncertain" in sig_lower or "vus" in sig_lower:
+        return "#f0a500"
+    return "#888888"
+
+
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="AlphaFold Variant Explainer",
@@ -190,14 +202,3 @@ if run_btn:
         explanation_box.markdown(full_explanation)
 
     status.update(label="Done!", state="complete", expanded=False)
-
-
-def _significance_color(sig: str) -> str:
-    sig_lower = sig.lower()
-    if "pathogenic" in sig_lower and "benign" not in sig_lower:
-        return "#ff4b4b"
-    if "benign" in sig_lower:
-        return "#21c354"
-    if "uncertain" in sig_lower or "vus" in sig_lower:
-        return "#f0a500"
-    return "#888888"

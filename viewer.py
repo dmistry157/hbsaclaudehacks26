@@ -4,7 +4,7 @@
 Highlights the mutant residue in red, colors the rest by secondary structure.
 """
 
-import streamlit.components.v1 as components
+import streamlit as st
 
 
 def render_structure(
@@ -86,7 +86,7 @@ def render_structure(
     </html>
     """
 
-    components.html(html, height=height, scrolling=False)
+    st.iframe(html, height=height, scrolling=False)
 
 
 def render_placeholder(height: int = 500) -> None:
@@ -114,4 +114,4 @@ def render_placeholder(height: int = 500) -> None:
     </body>
     </html>
     """
-    components.html(html, height=height, scrolling=False)
+    st.iframe(html, height=height, scrolling=False)
