@@ -2,8 +2,11 @@
 FastAPI backend for the AlphaFold Variant Explainer.
 
 Endpoints:
-  POST /api/analyze   – runs UniProt + AlphaFold + ClinVar pipeline, returns JSON
-  POST /api/explain   – streams Claude explanation as SSE
+  POST /api/auth/login    – Supabase email/password login, returns session
+  POST /api/auth/signup   – Supabase account creation
+  POST /api/auth/logout   – invalidate session
+  POST /api/analyze       – runs UniProt + AlphaFold + ClinVar pipeline, returns JSON
+  POST /api/explain       – streams Claude explanation as SSE
 
 Run:
   uvicorn backend.main:app --reload --port 8000
@@ -22,6 +25,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
+from supabase import create_client
 
 # Allow importing from repo root (api/, claude_explainer.py)
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -44,7 +48,21 @@ app.add_middleware(
 )
 
 
+# ── Supabase client ───────────────────────────────────────────────────────────
+
+def get_supabase():
+    url = os.environ.get("SUPABASE_URL")
+    key = os.environ.get("SUPABASE_ANON_KEY")
+    if not url or not key:
+        raise HTTPException(status_code=503, detail="Auth service not configured (missing SUPABASE_URL / SUPABASE_ANON_KEY)")
+    return create_client(url, key)
+
+
 # ── Request / Response models ─────────────────────────────────────────────────
+
+class AuthRequest(BaseModel):
+    email: str
+    password: str
 
 class AnalyzeRequest(BaseModel):
     gene: str
@@ -58,6 +76,39 @@ class ExplainRequest(BaseModel):
     clinvar_info: Optional[dict]
     domains_at_site: list[dict]
     level_label: str = "Patient (plain English)"
+
+
+# ── Auth endpoints ────────────────────────────────────────────────────────────
+
+@app.post("/api/auth/login")
+def auth_login(req: AuthRequest):
+    try:
+        res = get_supabase().auth.sign_in_with_password({"email": req.email, "password": req.password})
+        return {
+            "access_token": res.session.access_token,
+            "refresh_token": res.session.refresh_token,
+            "user": {"id": res.user.id, "email": res.user.email},
+        }
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+
+@app.post("/api/auth/signup")
+def auth_signup(req: AuthRequest):
+    try:
+        res = get_supabase().auth.sign_up({"email": req.email, "password": req.password})
+        return {"message": "Account created — check your email to confirm, then log in.", "user_id": res.user.id if res.user else None}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/auth/logout")
+def auth_logout():
+    try:
+        get_supabase().auth.sign_out()
+    except Exception:
+        pass
+    return {"message": "Logged out"}
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────

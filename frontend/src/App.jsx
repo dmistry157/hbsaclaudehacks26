@@ -1,12 +1,32 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider, useAuth } from './context/AuthContext'
 import Landing from './pages/Landing'
+import Login from './pages/Login'
 import VariantApp from './pages/VariantApp'
 
-export default function App() {
+function ProtectedRoute({ children }) {
+  const { session } = useAuth()
+  return session ? children : <Navigate to="/login" replace />
+}
+
+function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
-      <Route path="/app" element={<VariantApp />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/app" element={
+        <ProtectedRoute>
+          <VariantApp />
+        </ProtectedRoute>
+      } />
     </Routes>
+  )
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppRoutes />
+    </AuthProvider>
   )
 }

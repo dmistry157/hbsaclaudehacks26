@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const PRESETS = [
@@ -153,109 +154,147 @@ function Metric({ label, value, mono=true }) {
   )
 }
 
-// ─── Protein Viewer (canvas) ──────────────────────────────────────────────────
-function ProteinViewer({ state, gene, variantPos, proteinLength }) {
-  const canvasRef = useRef(null)
-  const animRef = useRef(null)
-  const rotRef = useRef(0)
+// ─── Protein Viewer (3Dmol.js) ────────────────────────────────────────────────
+function ProteinViewer({ pdbUrl, highlightResidue, isLoading }) {
+  const containerRef = useRef(null)
+  const viewerRef = useRef(null)
+  const [spinning, setSpinning] = useState(false)
+  const [structureLoaded, setStructureLoaded] = useState(false)
+  const [loadError, setLoadError] = useState(null)
 
+  // Init 3Dmol viewer once
   useEffect(() => {
-    if (state !== 'loaded') { cancelAnimationFrame(animRef.current); return }
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    const W = canvas.width, H = canvas.height
-    const seed = (gene||'X').charCodeAt(0)
-    const points = []
-    const N = 80
-    for (let i=0;i<N;i++) {
-      const t = i/(N-1)
-      const x = W*0.1 + t*(W*0.8)
-      const y = H/2 + Math.sin(t*Math.PI*3 + seed*0.3)*H*0.22 + Math.cos(t*Math.PI*5 + seed)*H*0.08
-      points.push({x,y,t})
+    if (!containerRef.current) return
+    const $3Dmol = window.$3Dmol
+    if (!$3Dmol) return
+    const viewer = $3Dmol.createViewer(containerRef.current, {
+      backgroundColor: 0xede8de,
+      antialias: true,
+    })
+    viewerRef.current = viewer
+    return () => { try { viewer.clear() } catch (_) {} }
+  }, [])
+
+  // Load structure when pdbUrl changes
+  useEffect(() => {
+    const viewer = viewerRef.current
+    const $3Dmol = window.$3Dmol
+    if (!viewer || !$3Dmol) return
+    if (!pdbUrl) {
+      viewer.clear(); viewer.render()
+      setStructureLoaded(false); setLoadError(null)
+      return
     }
-    const varPct = variantPos && proteinLength ? variantPos/proteinLength : 0.5
-    const varIdx = Math.floor(varPct*(N-1))
-
-    function draw(rot) {
-      ctx.clearRect(0,0,W,H)
-      ctx.fillStyle = '#ede8de'
-      ctx.fillRect(0,0,W,H)
-      // Subtle grid
-      ctx.strokeStyle = 'rgba(120,90,40,0.05)'
-      ctx.lineWidth = 1
-      for (let x=0;x<W;x+=40) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke() }
-      for (let y=0;y<H;y+=40) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke() }
-
-      ctx.shadowBlur = 10
-      for (let i=1;i<points.length;i++) {
-        const a = points[i-1], b = points[i]
-        const t = a.t
-        let color
-        if (t < 0.15 || (t > 0.6 && t < 0.75)) color = `rgba(70,95,35,${0.7+Math.sin(rot+t*10)*0.1})`
-        else if (t < 0.35) color = `rgba(107,135,55,${0.65+Math.cos(rot+t*8)*0.1})`
-        else if (t < 0.5)  color = `rgba(170,120,60,${0.6+Math.sin(rot+t*6)*0.1})`
-        else if (t < 0.62) color = `rgba(140,80,30,${0.65+Math.cos(rot+t*7)*0.1})`
-        else               color = `rgba(60,85,145,${0.65+Math.sin(rot+t*9)*0.1})`
-        ctx.shadowColor = color
-        ctx.strokeStyle = color
-        ctx.lineWidth = 5; ctx.lineCap = 'round'
-        ctx.beginPath()
-        ctx.moveTo(a.x, a.y + Math.sin(rot*0.5+i*0.2)*3)
-        ctx.lineTo(b.x, b.y + Math.sin(rot*0.5+(i+1)*0.2)*3)
-        ctx.stroke()
-      }
-      ctx.shadowBlur = 0
-
-      if (variantPos) {
-        const vp = points[varIdx]
-        if (vp) {
-          const pulse = 0.7 + Math.sin(Date.now()*0.004)*0.3
-          ctx.shadowColor = '#c4664a'; ctx.shadowBlur = 18*pulse
-          ctx.strokeStyle = `rgba(196,102,74,${pulse})`; ctx.lineWidth = 2
-          ctx.beginPath(); ctx.arc(vp.x, vp.y + Math.sin(rot*0.5+varIdx*0.2)*3, 10, 0, Math.PI*2); ctx.stroke()
-          ctx.fillStyle = `rgba(196,102,74,${0.3*pulse})`
-          ctx.beginPath(); ctx.arc(vp.x, vp.y + Math.sin(rot*0.5+varIdx*0.2)*3, 8, 0, Math.PI*2); ctx.fill()
-          ctx.shadowBlur = 0
-          ctx.fillStyle = '#c4664a'; ctx.font = '11px Geist Mono, monospace'
-          ctx.fillText(`aa ${variantPos}`, vp.x+14, vp.y-8)
+    setLoadError(null); setStructureLoaded(false)
+    fetch(pdbUrl)
+      .then(r => { if (!r.ok) throw new Error(`Failed to fetch PDB (${r.status})`); return r.text() })
+      .then(pdbText => {
+        viewer.clear()
+        viewer.addModel(pdbText, 'pdb')
+        viewer.setStyle({}, { cartoon: { colorscheme: 'ssJmol', opacity: 0.9 } })
+        if (highlightResidue) {
+          viewer.setStyle(
+            { resi: highlightResidue },
+            { cartoon: { color: '#c4664a' }, sphere: { color: '#c4664a', radius: 0.8 } }
+          )
+          viewer.addLabel(`Residue ${highlightResidue}`, {
+            resi: highlightResidue,
+            backgroundColor: '#7a2010',
+            fontColor: '#fdd9cc',
+            fontSize: 11,
+            borderColor: '#c4664a',
+            borderThickness: 0.5,
+            backgroundOpacity: 0.85,
+            inFront: true,
+          })
+          viewer.zoomTo({ resi: highlightResidue }, 1200)
+        } else {
+          viewer.zoomTo()
         }
-      }
-
-      ctx.fillStyle = 'rgba(120,90,40,0.2)'; ctx.font = '11px Geist Mono, monospace'
-      ctx.fillText('AlphaFold · predicted structure', 12, H-12)
-      const items = [['rgba(70,95,35,0.9)','Very high (>90)'],['rgba(107,135,55,0.9)','High (70–90)'],['rgba(170,120,60,0.9)','Medium (50–70)'],['rgba(140,80,30,0.9)','Low (<50)']]
-      items.forEach(([c,l],i) => {
-        ctx.fillStyle=c; ctx.fillRect(12, 14+i*18, 24, 6)
-        ctx.fillStyle='rgba(70,45,15,0.4)'; ctx.font='10px Geist Mono, monospace'
-        ctx.fillText(l, 42, 20+i*18)
+        viewer.spin('y', 0.5); setSpinning(true)
+        viewer.render(); setStructureLoaded(true)
       })
-      ctx.fillStyle='rgba(70,45,15,0.06)'; ctx.font='bold 36px Geist Mono, monospace'
-      ctx.fillText(gene||'', W/2-30, H/2+12)
-    }
+      .catch(err => setLoadError(err.message))
+  }, [pdbUrl, highlightResidue])
 
-    function loop() { rotRef.current += 0.012; draw(rotRef.current); animRef.current = requestAnimationFrame(loop) }
-    loop()
-    return () => cancelAnimationFrame(animRef.current)
-  }, [state, gene, variantPos, proteinLength])
+  const toggleSpin = () => {
+    const v = viewerRef.current; if (!v) return
+    if (spinning) { v.spin(false) } else { v.spin('y', 0.5) }
+    setSpinning(s => !s)
+  }
+  const zoomIn  = () => viewerRef.current?.zoom(1.25, 400)
+  const zoomOut = () => viewerRef.current?.zoom(0.8,  400)
+  const reset   = () => {
+    const v = viewerRef.current; if (!v) return
+    highlightResidue ? v.zoomTo({ resi: highlightResidue }, 600) : v.zoomTo({}, 600)
+    v.render()
+  }
 
-  if (state === 'empty') return (
-    <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:14,background:'#ede8de',borderRadius:10}}>
-      <div style={{width:56,height:56,borderRadius:'50%',background:'rgba(143,168,90,0.12)',border:'1px solid rgba(143,168,90,0.3)',display:'flex',alignItems:'center',justifyContent:'center'}}>
-        <DnaIcon size={24}/>
-      </div>
-      <p style={{fontSize:13,color:'#b0a080',textAlign:'center',maxWidth:200}}>Enter a variant to visualize its 3D structure</p>
+  const btnStyle = {
+    width:28, height:28, borderRadius:6,
+    background:'rgba(245,240,232,0.85)', border:'1px solid rgba(120,90,40,0.2)',
+    backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center',
+    cursor:'pointer', color:'#8a7060', transition:'all 0.15s', fontSize:13,
+  }
+
+  return (
+    <div style={{position:'relative', width:'100%', height:'100%', borderRadius:10, overflow:'hidden', background:'#ede8de'}}>
+      {/* 3Dmol mount */}
+      <div ref={containerRef} style={{position:'absolute', inset:0}}/>
+
+      {/* Loading overlay */}
+      {isLoading && !structureLoaded && (
+        <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:14,background:'rgba(237,232,222,0.9)',zIndex:10}}>
+          <div style={{width:40,height:40,border:'3px solid rgba(184,135,90,0.2)',borderTop:'3px solid #b8875a',borderRadius:'50%',animation:'spin 1s linear infinite'}}/>
+          <p style={{fontSize:12,color:'#b0a080',fontFamily:'Geist Mono, monospace'}}>Fetching AlphaFold structure…</p>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!isLoading && !pdbUrl && !loadError && (
+        <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:14}}>
+          <div style={{width:56,height:56,borderRadius:'50%',background:'rgba(143,168,90,0.12)',border:'1px solid rgba(143,168,90,0.3)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <DnaIcon size={24}/>
+          </div>
+          <p style={{fontSize:13,color:'#b0a080',textAlign:'center',maxWidth:200}}>Enter a variant to visualize its 3D structure</p>
+        </div>
+      )}
+
+      {/* Error state */}
+      {loadError && (
+        <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8}}>
+          <p style={{fontSize:13,color:'#c4664a'}}>Structure unavailable</p>
+          <p style={{fontSize:11,color:'#b0a080',fontFamily:'Geist Mono, monospace',maxWidth:240,textAlign:'center'}}>{loadError}</p>
+        </div>
+      )}
+
+      {/* Controls */}
+      {structureLoaded && (
+        <div style={{position:'absolute',bottom:10,right:10,display:'flex',gap:6,zIndex:20}}>
+          {[
+            { label:'＋', action: zoomIn,     title:'Zoom in'  },
+            { label:'－', action: zoomOut,    title:'Zoom out' },
+            { label:'↺',  action: reset,      title:'Reset'    },
+            { label: spinning ? '⏸' : '▶', action: toggleSpin, title: spinning ? 'Pause' : 'Spin' },
+          ].map(({ label, action, title }) => (
+            <button key={title} onClick={action} title={title} style={btnStyle}
+              onMouseEnter={e=>{ e.currentTarget.style.background='rgba(245,240,232,1)'; e.currentTarget.style.color='#2a1a08' }}
+              onMouseLeave={e=>{ e.currentTarget.style.background='rgba(245,240,232,0.85)'; e.currentTarget.style.color='#8a7060' }}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Residue badge */}
+      {structureLoaded && highlightResidue && (
+        <div style={{position:'absolute',top:10,left:10,zIndex:20,display:'flex',alignItems:'center',gap:6,borderRadius:6,background:'rgba(196,102,74,0.15)',border:'1px solid rgba(196,102,74,0.4)',backdropFilter:'blur(4px)',padding:'4px 10px'}}>
+          <span style={{width:7,height:7,borderRadius:'50%',background:'#c4664a',animation:'pulse 1.5s ease-in-out infinite'}}/>
+          <span style={{fontSize:11,color:'#8a2010',fontFamily:'Geist Mono, monospace'}}>Residue {highlightResidue}</span>
+        </div>
+      )}
     </div>
   )
-
-  if (state === 'loading') return (
-    <div style={{width:'100%',height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:14,background:'#ede8de',borderRadius:10}}>
-      <div style={{width:40,height:40,border:'3px solid rgba(184,135,90,0.2)',borderTop:'3px solid #b8875a',borderRadius:'50%',animation:'spin 1s linear infinite'}}/>
-      <p style={{fontSize:12,color:'#b0a080',fontFamily:'Geist Mono, monospace'}}>Fetching AlphaFold structure…</p>
-    </div>
-  )
-
-  return <canvas ref={canvasRef} width={800} height={480} style={{width:'100%',height:'100%',borderRadius:10,display:'block'}}/>
 }
 
 // ─── Explanation Panel ────────────────────────────────────────────────────────
@@ -402,6 +441,10 @@ function VariantForm({ onSubmit, isLoading }) {
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function VariantApp() {
+  const { user, logout } = useAuth()
+  const navigate = useNavigate()
+  const handleLogout = async () => { await logout(); navigate('/login') }
+
   const [isLoading, setIsLoading] = useState(false)
   const [stepStatuses, setStepStatuses] = useState(INITIAL_STEPS)
   const [analysisResult, setAnalysisResult] = useState(null)
@@ -409,8 +452,6 @@ export default function VariantApp() {
   const [isStreaming, setIsStreaming] = useState(false)
   const [error, setError] = useState(null)
   const [currentLevel, setCurrentLevel] = useState(READING_LEVELS[0])
-  const [viewerState, setViewerState] = useState('empty')
-  const [currentGene, setCurrentGene] = useState('')
 
   const setStep = (id, status) => setStepStatuses(prev => ({...prev, [id]: status}))
   const tick = (ms=120) => new Promise(r => setTimeout(r, ms))
@@ -422,9 +463,6 @@ export default function VariantApp() {
     setExplanation('')
     setCurrentLevel(level)
     setStepStatuses(INITIAL_STEPS)
-    setViewerState('loading')
-    setCurrentGene(gene)
-
     setStep('parse', 'loading')
     await tick()
     setStep('parse', 'done')
@@ -446,7 +484,6 @@ export default function VariantApp() {
       setError(err.message)
       setStep('uniprot', 'error')
       setIsLoading(false)
-      setViewerState('empty')
       return
     }
 
@@ -458,7 +495,6 @@ export default function VariantApp() {
 
     setAnalysisResult(result)
     setIsLoading(false)
-    setViewerState('loaded')
 
     setStep('explain', 'loading')
     setIsStreaming(true)
@@ -530,7 +566,14 @@ export default function VariantApp() {
             <span style={{fontWeight:600,fontSize:14,color:'#2a1a08',fontFamily:'Geist, system-ui, sans-serif'}}>Aminos</span>
           </div>
         </div>
-        <span style={{fontSize:12,color:'#b0a080',fontFamily:'Geist Mono, monospace'}}>Educational use only — not medical advice</span>
+        <div style={{display:'flex',alignItems:'center',gap:16}}>
+          {user && <span style={{fontSize:12,color:'rgba(70,45,15,0.4)',fontFamily:'Geist Mono, monospace'}}>{user.email}</span>}
+          <button onClick={handleLogout} style={{fontSize:12,color:'rgba(70,45,15,0.5)',background:'none',border:'1px solid rgba(120,90,40,0.2)',borderRadius:9999,padding:'4px 12px',cursor:'pointer',fontFamily:'Geist, system-ui, sans-serif',transition:'all 0.2s'}}
+            onMouseEnter={e=>{e.currentTarget.style.color='#2a1a08';e.currentTarget.style.borderColor='rgba(120,90,40,0.4)'}}
+            onMouseLeave={e=>{e.currentTarget.style.color='rgba(70,45,15,0.5)';e.currentTarget.style.borderColor='rgba(120,90,40,0.2)'}}>
+            Log out
+          </button>
+        </div>
       </header>
 
       {/* Body */}
@@ -563,10 +606,9 @@ export default function VariantApp() {
           <div style={{flex:1,minHeight:0,padding:12}}>
             <div style={{width:'100%',height:'100%',borderRadius:10,overflow:'hidden',border:'1px solid rgba(120,90,40,0.14)'}}>
               <ProteinViewer
-                state={viewerState}
-                gene={currentGene}
-                variantPos={analysisResult?.variant_info?.protein_position}
-                proteinLength={analysisResult?.protein_info?.length}
+                pdbUrl={analysisResult?.pdb_url}
+                highlightResidue={analysisResult?.variant_info?.protein_position}
+                isLoading={isLoading}
               />
             </div>
           </div>

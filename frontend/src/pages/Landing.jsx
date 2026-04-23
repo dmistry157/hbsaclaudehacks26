@@ -46,7 +46,7 @@ function LandingNav() {
               onMouseLeave={e=>e.target.style.color='rgba(70,45,15,0.5)'}>{l}</a>
           ))}
         </div>
-        <Link to="/app" style={{display:'flex',alignItems:'center',gap:6,fontSize:13,fontWeight:600,color:'#f5f0e8',background:'#2a1a08',border:'none',padding:'8px 18px',borderRadius:9999,cursor:'pointer',textDecoration:'none',transition:'all 0.2s',fontFamily:'Geist, system-ui, sans-serif'}}
+        <Link to="/login" style={{display:'flex',alignItems:'center',gap:6,fontSize:13,fontWeight:600,color:'#f5f0e8',background:'#2a1a08',border:'none',padding:'8px 18px',borderRadius:9999,cursor:'pointer',textDecoration:'none',transition:'all 0.2s',fontFamily:'Geist, system-ui, sans-serif'}}
           onMouseEnter={e=>e.currentTarget.style.background='#3d2810'}
           onMouseLeave={e=>e.currentTarget.style.background='#2a1a08'}>
           Open app
@@ -83,7 +83,7 @@ function Hero() {
             Paste any variant from your genetic report — BRCA1, HBB, CFTR. See the exact mutation site in 3D. Get a plain-language explanation at whatever reading level you need.
           </p>
           <div style={{display:'flex',alignItems:'center',gap:16,animation:'fadeIn 0.5s 0.9s both'}}>
-            <Link to="/app" style={{display:'flex',alignItems:'center',gap:8,background:'#2a1a08',color:'#f5f0e8',textDecoration:'none',fontSize:14,fontWeight:600,padding:'12px 24px',borderRadius:9999,cursor:'pointer',transition:'all 0.2s',boxShadow:'0 4px 20px rgba(42,26,8,0.2)',fontFamily:'Geist, system-ui, sans-serif'}}
+            <Link to="/login" style={{display:'flex',alignItems:'center',gap:8,background:'#2a1a08',color:'#f5f0e8',textDecoration:'none',fontSize:14,fontWeight:600,padding:'12px 24px',borderRadius:9999,cursor:'pointer',transition:'all 0.2s',boxShadow:'0 4px 20px rgba(42,26,8,0.2)',fontFamily:'Geist, system-ui, sans-serif'}}
               onMouseEnter={e=>e.currentTarget.style.background='#3d2810'}
               onMouseLeave={e=>e.currentTarget.style.background='#2a1a08'}>
               Try the demo
@@ -250,7 +250,7 @@ function DemoCTA() {
           <p style={{fontSize:15,color:'rgba(70,45,15,0.55)',maxWidth:480,margin:'0 auto 40px',lineHeight:1.65}}>Pick one of our demo variants — sickle cell, BRCA1, cystic fibrosis — or paste your own. The full analysis runs in under 30 seconds.</p>
           <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,marginBottom:40,flexWrap:'wrap'}}>
             {demos.map(([gene,variant,label])=>(
-              <Link key={gene} to="/app" style={{display:'flex',alignItems:'center',gap:8,border:'1px solid rgba(120,90,40,0.2)',borderRadius:9999,padding:'8px 16px',background:'rgba(245,240,232,0.8)',cursor:'pointer',transition:'all 0.2s',textDecoration:'none'}}
+              <Link key={gene} to="/login" style={{display:'flex',alignItems:'center',gap:8,border:'1px solid rgba(120,90,40,0.2)',borderRadius:9999,padding:'8px 16px',background:'rgba(245,240,232,0.8)',cursor:'pointer',transition:'all 0.2s',textDecoration:'none'}}
                 onMouseEnter={e=>{e.currentTarget.style.borderColor='rgba(120,90,40,0.4)';e.currentTarget.style.background='rgba(245,240,232,1)'}}
                 onMouseLeave={e=>{e.currentTarget.style.borderColor='rgba(120,90,40,0.2)';e.currentTarget.style.background='rgba(245,240,232,0.8)'}}>
                 <span style={{fontFamily:'Geist Mono, monospace',fontSize:12,color:'rgba(70,45,15,0.75)'}}>{gene}</span>
@@ -259,7 +259,7 @@ function DemoCTA() {
               </Link>
             ))}
           </div>
-          <Link to="/app" style={{display:'inline-flex',alignItems:'center',gap:10,background:'#2a1a08',color:'#f5f0e8',textDecoration:'none',fontSize:15,fontWeight:600,padding:'14px 32px',borderRadius:9999,cursor:'pointer',boxShadow:'0 8px 32px rgba(42,26,8,0.18)',transition:'all 0.2s',fontFamily:'Geist, system-ui, sans-serif'}}
+          <Link to="/login" style={{display:'inline-flex',alignItems:'center',gap:10,background:'#2a1a08',color:'#f5f0e8',textDecoration:'none',fontSize:15,fontWeight:600,padding:'14px 32px',borderRadius:9999,cursor:'pointer',boxShadow:'0 8px 32px rgba(42,26,8,0.18)',transition:'all 0.2s',fontFamily:'Geist, system-ui, sans-serif'}}
             onMouseEnter={e=>e.currentTarget.style.background='#3d2810'}
             onMouseLeave={e=>e.currentTarget.style.background='#2a1a08'}>
             Open the demo
