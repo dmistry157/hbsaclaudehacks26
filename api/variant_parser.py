@@ -1,5 +1,5 @@
 """
-Variant notation parser.
+Variant notation parser. Takes in HGVS notation and returns back type of mutation + location of mutation.
 
 Handles common HGVS-style protein and coding variants:
   - p.Glu6Val  / p.E6V            (missense)
