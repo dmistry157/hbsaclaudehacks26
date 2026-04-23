@@ -4,6 +4,10 @@ A Streamlit app that takes a gene + variant, fetches protein structure,
 highlights the mutation site in 3D, and explains it in plain language.
 """
 
+from dotenv import load_dotenv
+load_dotenv()
+
+import os
 import streamlit as st
 from api.uniprot import get_protein_info, find_domain_for_residue
 from api.alphafold import get_structure, fetch_pdb_text
@@ -11,6 +15,8 @@ from api.clinvar import search_variant
 from api.variant_parser import parse_variant
 from claude_explainer import generate_explanation, READING_LEVELS
 from viewer import render_structure, render_placeholder
+from auth import render_auth_ui, logout
+from storage import save_analysis
 
 
 def _significance_color(sig: str) -> str:
@@ -31,6 +37,10 @@ st.set_page_config(
     layout="wide",
 )
 
+# ── Auth gate ─────────────────────────────────────────────────────────────────
+if not render_auth_ui():
+    st.stop()
+
 # ── Demo presets ─────────────────────────────────────────────────────────────
 PRESETS = {
     "BRCA1 — c.5266dupC (hereditary breast cancer)": ("BRCA1", "c.5266dupC"),
@@ -42,6 +52,15 @@ PRESETS = {
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.title("🧬 Variant Explainer")
+    st.caption(f"Logged in as {st.session_state['user'].email}")
+    if st.button("Log out", use_container_width=True):
+        logout()
+
+    st.divider()
+
+    page = st.radio("Navigate", ["Variant Explainer", "My Results & Chat"], label_visibility="collapsed")
+
+    st.divider()
     st.caption("Enter a gene and variant to see its 3D structure and a plain-language explanation.")
 
     preset_label = st.selectbox("Demo presets", list(PRESETS.keys()))
@@ -70,12 +89,33 @@ with st.sidebar:
     run_btn = st.button("Explain this variant", type="primary", use_container_width=True)
 
     st.divider()
+    st.caption("**SMS**")
+    phone_input = st.text_input("Link phone for SMS chat", placeholder="+14155552671")
+    if st.button("Link phone number", use_container_width=True):
+        try:
+            from auth import get_supabase
+            get_supabase().table("user_phones").upsert(
+                {"user_id": st.session_state["user"].id, "phone": phone_input},
+                on_conflict="phone",
+            ).execute()
+            twilio_number = os.environ.get("TWILIO_NUMBER", "your Twilio number")
+            st.success(f"Linked! Text your questions to {twilio_number}")
+        except Exception as e:
+            st.error(f"Failed to link phone: {e}")
+
+    st.divider()
     st.caption(
         "**Data sources:** UniProt · AlphaFold EBI · ClinVar (NCBI)\n\n"
         "**Disclaimer:** This tool is for educational purposes only. "
         "It is not a diagnostic tool and does not constitute medical advice. "
         "Always consult a healthcare professional."
     )
+
+# ── Page router ───────────────────────────────────────────────────────────────
+if page == "My Results & Chat":
+    from chat import render_chat_page
+    render_chat_page()
+    st.stop()
 
 # ── Main layout ───────────────────────────────────────────────────────────────
 col_3d, col_info = st.columns([1.1, 1], gap="large")
@@ -201,4 +241,23 @@ if run_btn:
             explanation_box.markdown(full_explanation + "▌")
         explanation_box.markdown(full_explanation)
 
+        st.session_state["last_result"] = {
+            "gene": gene_input,
+            "variant_input": variant_input,
+            "variant_info": variant_info,
+            "protein_info": protein_info,
+            "clinvar_info": clinvar_info,
+            "domains_at_site": domains_at_site,
+            "explanation": full_explanation,
+            "reading_level": level_label,
+        }
+
     status.update(label="Done!", state="complete", expanded=False)
+
+if st.session_state.get("last_result"):
+    with col_info:
+        st.divider()
+        if st.button("Save this result", type="secondary", use_container_width=True):
+            r = st.session_state["last_result"]
+            save_analysis(**r)
+            st.success("Saved — find it in My Results & Chat.")

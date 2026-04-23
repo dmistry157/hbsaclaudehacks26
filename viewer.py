@@ -86,7 +86,7 @@ def render_structure(
     </html>
     """
 
-    st.iframe(html, height=height, scrolling=False)
+    st.iframe(html, height=height)
 
 
 def render_placeholder(height: int = 500) -> None:
@@ -114,4 +114,4 @@ def render_placeholder(height: int = 500) -> None:
     </body>
     </html>
     """
-    st.iframe(html, height=height, scrolling=False)
+    st.iframe(html, height=height)
