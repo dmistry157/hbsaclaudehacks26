@@ -13,6 +13,12 @@ export function AuthProvider({ children }) {
     setSession(s)
   }, [])
 
+  const loginAsGuest = useCallback(() => {
+    const s = { guest: true, user: { email: 'Guest' } }
+    localStorage.setItem('aminos_session', JSON.stringify(s))
+    setSession(s)
+  }, [])
+
   const logout = useCallback(async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST' })
@@ -22,7 +28,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ session, user: session?.user ?? null, login, logout }}>
+    <AuthContext.Provider value={{ session, user: session?.user ?? null, login, loginAsGuest, logout }}>
       {children}
     </AuthContext.Provider>
   )

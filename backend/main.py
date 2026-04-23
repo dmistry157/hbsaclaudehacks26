@@ -7,6 +7,7 @@ Endpoints:
   POST /api/auth/logout   – invalidate session
   POST /api/analyze       – runs UniProt + AlphaFold + ClinVar pipeline, returns JSON
   POST /api/explain       – streams Claude explanation as SSE
+  POST /api/chat          – agentic chat about a genetic analysis (SSE)
 
 Run:
   uvicorn backend.main:app --reload --port 8000
@@ -17,6 +18,8 @@ import sys
 import os
 import json
 import asyncio
+import threading
+import queue as queue_mod
 from pathlib import Path
 from typing import Optional
 
@@ -76,6 +79,15 @@ class ExplainRequest(BaseModel):
     clinvar_info: Optional[dict]
     domains_at_site: list[dict]
     level_label: str = "Patient (plain English)"
+
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+class ChatRequest(BaseModel):
+    analysis: dict          # {gene, variant_input, variant_info, protein_info, clinvar_info, domains_at_site, explanation}
+    messages: list[ChatMessage]
 
 
 # ── Auth endpoints ────────────────────────────────────────────────────────────
@@ -188,6 +200,67 @@ def explain(req: ExplainRequest):
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
         },
+    )
+
+
+@app.post("/api/chat")
+def chat_endpoint(req: ChatRequest):
+    """Agentic chat about a genetic analysis — streams tool status then final response as SSE."""
+    from agent import run_agent, build_context, TOOL_LABELS
+
+    status_queue: queue_mod.Queue = queue_mod.Queue()
+    result_holder: dict = {}
+
+    def worker():
+        context = build_context(req.analysis)
+        messages = [
+            {"role": "user", "content": context},
+            {
+                "role": "assistant",
+                "content": (
+                    "Thank you — I have your complete genetic analysis in front of me. "
+                    "What would you like to know?"
+                ),
+            },
+            *[{"role": m.role, "content": m.content} for m in req.messages],
+        ]
+
+        def on_tool_call(name):
+            status_queue.put(("tool", TOOL_LABELS.get(name, f"Calling {name}...")))
+
+        try:
+            text = run_agent(messages, on_tool_call=on_tool_call)
+            result_holder["text"] = text
+        except Exception as e:
+            result_holder["error"] = str(e)
+        finally:
+            status_queue.put(None)  # sentinel: worker done
+
+    thread = threading.Thread(target=worker, daemon=True)
+    thread.start()
+
+    def sse_gen():
+        while True:
+            try:
+                item = status_queue.get(timeout=90)
+            except queue_mod.Empty:
+                break
+            if item is None:
+                break
+            kind, val = item
+            yield f"data: {json.dumps({kind: val})}\n\n"
+
+        thread.join(timeout=5)
+        if "error" in result_holder:
+            yield f"data: {json.dumps({'error': result_holder['error']})}\n\n"
+        else:
+            yield f"data: {json.dumps({'text': result_holder.get('text', '')})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        sse_gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 

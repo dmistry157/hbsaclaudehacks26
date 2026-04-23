@@ -26,8 +26,10 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  const { login } = useAuth()
+  const { login, loginAsGuest } = useAuth()
   const navigate = useNavigate()
+
+  const handleGuest = () => { loginAsGuest(); navigate('/app') }
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -194,9 +196,24 @@ export default function Login() {
           </div>
         </div>
 
-        <p style={{ textAlign: 'center', marginTop: 20, fontSize: 11, color: 'rgba(70,45,15,0.35)', fontFamily: 'Geist Mono, monospace' }}>
-          Free · No credit card · Not medical advice
-        </p>
+        {/* Guest option */}
+        <div style={{ marginTop: 16, textAlign: 'center' }}>
+          <button onClick={handleGuest} style={{
+            width: '100%', padding: '10px 0',
+            fontSize: 13, fontFamily: 'Geist, system-ui, sans-serif',
+            color: 'rgba(70,45,15,0.55)',
+            background: 'transparent',
+            border: '1px solid rgba(120,90,40,0.18)',
+            borderRadius: 9999, cursor: 'pointer', transition: 'all 0.2s',
+          }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(120,90,40,0.35)'; e.currentTarget.style.color = '#2a1a08' }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(120,90,40,0.18)'; e.currentTarget.style.color = 'rgba(70,45,15,0.55)' }}>
+            Continue as guest
+          </button>
+          <p style={{ marginTop: 10, fontSize: 11, color: 'rgba(70,45,15,0.3)', fontFamily: 'Geist Mono, monospace' }}>
+            No account needed · history not saved
+          </p>
+        </div>
 
         <div style={{ textAlign: 'center', marginTop: 10 }}>
           <Link to="/" style={{ fontSize: 12, color: 'rgba(70,45,15,0.4)', textDecoration: 'none', fontFamily: 'Geist, system-ui, sans-serif', transition: 'color 0.2s' }}

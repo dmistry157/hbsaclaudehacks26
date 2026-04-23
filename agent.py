@@ -143,7 +143,7 @@ def run_agent(messages: list, on_tool_call=None) -> str:
 
     for _ in range(MAX_TOOL_ROUNDS):
         response = client.messages.create(
-            model="claude-opus-4-7",
+            model="claude-opus-4-6",
             max_tokens=1024,
             system=SYSTEM_PROMPT,
             tools=TOOLS,

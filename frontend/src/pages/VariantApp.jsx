@@ -439,6 +439,201 @@ function VariantForm({ onSubmit, isLoading }) {
   )
 }
 
+// ─── Chat Panel ───────────────────────────────────────────────────────────────
+function ChatPanel({ analysisResult, explanation, gene, variantInput }) {
+  const [messages, setMessages] = useState([])
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [statusText, setStatusText] = useState('')
+  const bottomRef = useRef(null)
+  const inputRef = useRef(null)
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, loading])
+
+  const send = async () => {
+    const text = input.trim()
+    if (!text || loading) return
+    setInput('')
+    const userMsg = { role: 'user', content: text }
+    setMessages(prev => [...prev, userMsg])
+    setLoading(true)
+    setStatusText('Thinking…')
+
+    const allMessages = [...messages, userMsg]
+
+    try {
+      const resp = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          analysis: {
+            gene,
+            variant_input: variantInput,
+            ...analysisResult,
+            explanation,
+          },
+          messages: allMessages,
+        }),
+      })
+
+      if (!resp.ok) throw new Error(`Server error (${resp.status})`)
+
+      const reader = resp.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let responseText = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop()
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const raw = line.slice(6).trim()
+          if (raw === '[DONE]') break
+          try {
+            const parsed = JSON.parse(raw)
+            if (parsed.tool) setStatusText(parsed.tool)
+            if (parsed.text) responseText = parsed.text
+            if (parsed.error) throw new Error(parsed.error)
+          } catch (_) {}
+        }
+      }
+
+      setMessages(prev => [...prev, { role: 'assistant', content: responseText }])
+    } catch (err) {
+      setMessages(prev => [...prev, { role: 'assistant', content: `Sorry, something went wrong: ${err.message}` }])
+    } finally {
+      setLoading(false)
+      setStatusText('')
+      setTimeout(() => inputRef.current?.focus(), 50)
+    }
+  }
+
+  const handleKey = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
+  }
+
+  const hasContext = !!(analysisResult && gene)
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',height:'100%',borderRadius:12,border:'1px solid rgba(120,90,40,0.16)',background:'rgba(245,240,232,0.97)',overflow:'hidden'}}>
+      {/* Header */}
+      <div style={{flexShrink:0,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 16px',borderBottom:'1px solid rgba(120,90,40,0.12)'}}>
+        <span style={{fontSize:11,fontWeight:600,color:'#8a7060',textTransform:'uppercase',letterSpacing:'0.05em',display:'flex',alignItems:'center',gap:6}}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8a7060" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          Chat with your health assistant
+        </span>
+        {hasContext && (
+          <span style={{fontSize:11,color:'rgba(90,107,48,0.8)',fontFamily:'Geist Mono, monospace',background:'rgba(90,107,48,0.1)',border:'1px solid rgba(90,107,48,0.25)',borderRadius:4,padding:'2px 8px'}}>
+            {gene} · {variantInput}
+          </span>
+        )}
+      </div>
+
+      {/* Messages */}
+      <div style={{flex:1,overflowY:'auto',padding:16,display:'flex',flexDirection:'column',gap:12}}>
+        {!hasContext && (
+          <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',gap:10,opacity:0.5}}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#8a7060" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <p style={{fontSize:12,color:'#8a7060',textAlign:'center',maxWidth:220}}>Run an analysis first — then ask anything about the variant, conditions, or next steps.</p>
+          </div>
+        )}
+
+        {hasContext && messages.length === 0 && !loading && (
+          <div style={{display:'flex',flexDirection:'column',gap:8}}>
+            <p style={{fontSize:12,color:'#8a7060',marginBottom:4}}>Suggested questions:</p>
+            {[
+              `What does the ${gene} ${variantInput} variant mean for my health?`,
+              'Are there any lifestyle changes I should consider?',
+              'What questions should I bring to my doctor?',
+              'Could this affect my family members?',
+            ].map(q => (
+              <button key={q} onClick={() => { setInput(q); inputRef.current?.focus() }}
+                style={{textAlign:'left',fontSize:12,color:'#5a4030',background:'rgba(120,90,40,0.07)',border:'1px solid rgba(120,90,40,0.18)',borderRadius:8,padding:'8px 12px',cursor:'pointer',lineHeight:1.5,transition:'all 0.15s',fontFamily:'inherit'}}
+                onMouseEnter={e=>{ e.currentTarget.style.background='rgba(120,90,40,0.12)'; e.currentTarget.style.borderColor='rgba(120,90,40,0.3)' }}
+                onMouseLeave={e=>{ e.currentTarget.style.background='rgba(120,90,40,0.07)'; e.currentTarget.style.borderColor='rgba(120,90,40,0.18)' }}>
+                {q}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {messages.map((m, i) => (
+          <div key={i} style={{display:'flex',gap:10,flexDirection: m.role==='user' ? 'row-reverse' : 'row',alignItems:'flex-start'}}>
+            <div style={{
+              flexShrink:0, width:28, height:28, borderRadius:'50%',
+              background: m.role==='user' ? 'rgba(42,26,8,0.12)' : 'rgba(90,107,48,0.15)',
+              border: `1px solid ${m.role==='user' ? 'rgba(42,26,8,0.15)' : 'rgba(90,107,48,0.3)'}`,
+              display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,
+              color: m.role==='user' ? '#2a1a08' : '#3a5020',
+            }}>
+              {m.role==='user' ? '?' : '✦'}
+            </div>
+            <div style={{
+              maxWidth:'80%',borderRadius:10,padding:'10px 14px',
+              background: m.role==='user' ? 'rgba(42,26,8,0.07)' : 'rgba(90,107,48,0.09)',
+              border: `1px solid ${m.role==='user' ? 'rgba(42,26,8,0.12)' : 'rgba(90,107,48,0.2)'}`,
+            }}>
+              <SimpleMarkdown text={m.content}/>
+            </div>
+          </div>
+        ))}
+
+        {loading && (
+          <div style={{display:'flex',gap:10,alignItems:'flex-start'}}>
+            <div style={{flexShrink:0,width:28,height:28,borderRadius:'50%',background:'rgba(90,107,48,0.15)',border:'1px solid rgba(90,107,48,0.3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,color:'#3a5020'}}>✦</div>
+            <div style={{borderRadius:10,padding:'10px 14px',background:'rgba(90,107,48,0.09)',border:'1px solid rgba(90,107,48,0.2)',display:'flex',alignItems:'center',gap:8}}>
+              <div style={{width:12,height:12,border:'2px solid rgba(90,107,48,0.3)',borderTop:'2px solid #5a6b30',borderRadius:'50%',animation:'spin 0.8s linear infinite',flexShrink:0}}/>
+              <span style={{fontSize:12,color:'#6a8040',fontStyle:'italic'}}>{statusText}</span>
+            </div>
+          </div>
+        )}
+
+        <div ref={bottomRef}/>
+      </div>
+
+      {/* Input */}
+      <div style={{flexShrink:0,borderTop:'1px solid rgba(120,90,40,0.12)',padding:12,display:'flex',gap:8}}>
+        <textarea
+          ref={inputRef}
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={handleKey}
+          disabled={!hasContext || loading}
+          placeholder={hasContext ? 'Ask about your results, treatments, next steps…' : 'Run an analysis first'}
+          rows={1}
+          style={{
+            flex:1, resize:'none', borderRadius:8, border:'1px solid rgba(120,90,40,0.28)',
+            background: hasContext ? 'rgba(245,240,232,0.9)' : 'rgba(245,240,232,0.5)',
+            padding:'9px 12px', fontSize:13, color:'#2a1a08', fontFamily:'inherit',
+            outline:'none', transition:'border 0.15s', lineHeight:1.5,
+            opacity: hasContext ? 1 : 0.6,
+          }}
+          onFocus={e=>e.target.style.borderColor='rgba(107,124,69,0.6)'}
+          onBlur={e=>e.target.style.borderColor='rgba(120,90,40,0.28)'}
+        />
+        <button onClick={send} disabled={!hasContext || loading || !input.trim()}
+          style={{
+            flexShrink:0, width:38, height:38, borderRadius:8, border:'none',
+            background: hasContext && input.trim() ? '#5a6b30' : 'rgba(120,90,40,0.18)',
+            color: hasContext && input.trim() ? '#f5f0e8' : '#b0a080',
+            cursor: hasContext && input.trim() ? 'pointer' : 'not-allowed',
+            display:'flex',alignItems:'center',justifyContent:'center',transition:'all 0.15s',
+          }}
+          onMouseEnter={e=>{ if(!loading && input.trim()) e.currentTarget.style.filter='brightness(1.1)' }}
+          onMouseLeave={e=>{ e.currentTarget.style.filter='' }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function VariantApp() {
   const { user, logout } = useAuth()
@@ -452,6 +647,9 @@ export default function VariantApp() {
   const [isStreaming, setIsStreaming] = useState(false)
   const [error, setError] = useState(null)
   const [currentLevel, setCurrentLevel] = useState(READING_LEVELS[0])
+  const [activeTab, setActiveTab] = useState('explanation') // 'explanation' | 'chat'
+  const [lastGene, setLastGene] = useState('')
+  const [lastVariant, setLastVariant] = useState('')
 
   const setStep = (id, status) => setStepStatuses(prev => ({...prev, [id]: status}))
   const tick = (ms=120) => new Promise(r => setTimeout(r, ms))
@@ -463,6 +661,9 @@ export default function VariantApp() {
     setExplanation('')
     setCurrentLevel(level)
     setStepStatuses(INITIAL_STEPS)
+    setActiveTab('explanation')
+    setLastGene(gene)
+    setLastVariant(variant)
     setStep('parse', 'loading')
     await tick()
     setStep('parse', 'done')
@@ -542,7 +743,7 @@ export default function VariantApp() {
     }
   }, [])
 
-  const showExplanation = explanation || isStreaming
+  const showBottomPanel = !!(explanation || isStreaming || analysisResult)
 
   return (
     <div style={{height:'100vh',display:'flex',flexDirection:'column',overflow:'hidden',background:'#f5f0e8'}}>
@@ -603,7 +804,8 @@ export default function VariantApp() {
 
         {/* Main */}
         <main style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:'#ede8de'}}>
-          <div style={{flex:1,minHeight:0,padding:12}}>
+          {/* Protein viewer */}
+          <div style={{flex:showBottomPanel ? '0 0 42%' : 1, minHeight:0, padding:12, paddingBottom: showBottomPanel ? 6 : 12}}>
             <div style={{width:'100%',height:'100%',borderRadius:10,overflow:'hidden',border:'1px solid rgba(120,90,40,0.14)'}}>
               <ProteinViewer
                 pdbUrl={analysisResult?.pdb_url}
@@ -613,13 +815,51 @@ export default function VariantApp() {
             </div>
           </div>
 
-          {showExplanation && (
-            <div style={{flexShrink:0,height:'38%',padding:'0 12px 12px',animation:'slideUp 0.4s ease-out'}}>
-              <ExplanationPanel
-                text={explanation}
-                isStreaming={isStreaming}
-                levelLabel={currentLevel}
-              />
+          {/* Bottom panel: Explanation + Chat tabs */}
+          {showBottomPanel && (
+            <div style={{flex:1,minHeight:0,display:'flex',flexDirection:'column',padding:'0 12px 12px',animation:'slideUp 0.4s ease-out'}}>
+              {/* Tab bar */}
+              <div style={{flexShrink:0,display:'flex',gap:2,marginBottom:6}}>
+                {[
+                  { id:'explanation', label:'Explanation' },
+                  { id:'chat',        label:'Chat' },
+                ].map(tab => (
+                  <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                    style={{
+                      padding:'6px 14px', fontSize:12, fontWeight: activeTab===tab.id ? 600 : 400,
+                      fontFamily:'Geist, system-ui, sans-serif',
+                      color: activeTab===tab.id ? '#2a1a08' : 'rgba(70,45,15,0.45)',
+                      background: activeTab===tab.id ? 'rgba(245,240,232,0.95)' : 'transparent',
+                      border: activeTab===tab.id ? '1px solid rgba(120,90,40,0.2)' : '1px solid transparent',
+                      borderRadius:'8px 8px 0 0', borderBottom:'none',
+                      cursor:'pointer', transition:'all 0.15s',
+                    }}>
+                    {tab.label}
+                    {tab.id==='chat' && (
+                      <span style={{marginLeft:6,fontSize:10,background:'rgba(90,107,48,0.15)',color:'#3a5020',border:'1px solid rgba(90,107,48,0.25)',borderRadius:9999,padding:'1px 6px'}}>AI</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              {/* Tab content */}
+              <div style={{flex:1,minHeight:0}}>
+                {activeTab==='explanation' && (
+                  <ExplanationPanel
+                    text={explanation}
+                    isStreaming={isStreaming}
+                    levelLabel={currentLevel}
+                  />
+                )}
+                {activeTab==='chat' && (
+                  <ChatPanel
+                    analysisResult={analysisResult}
+                    explanation={explanation}
+                    gene={lastGene}
+                    variantInput={lastVariant}
+                  />
+                )}
+              </div>
             </div>
           )}
         </main>
