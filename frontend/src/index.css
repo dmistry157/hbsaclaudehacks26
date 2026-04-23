@@ -1,0 +1,74 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  * {
+    @apply border-zinc-800;
+  }
+
+  body {
+    @apply bg-zinc-950 text-zinc-50 font-sans;
+    font-feature-settings: 'rlig' 1, 'calt' 1;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-zinc-700 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-zinc-600;
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-zinc-900/60 backdrop-blur-md border border-zinc-800/60;
+  }
+
+  .glow-purple {
+    box-shadow: 0 0 20px -5px rgb(139 92 246 / 0.3);
+  }
+
+  /* Prose styles for the explanation markdown */
+  .explanation-prose h1,
+  .explanation-prose h2,
+  .explanation-prose h3 {
+    @apply text-zinc-100 font-semibold mt-4 mb-2;
+  }
+  .explanation-prose h1 { @apply text-base; }
+  .explanation-prose h2 { @apply text-sm; }
+  .explanation-prose p {
+    @apply text-zinc-300 leading-relaxed mb-3;
+  }
+  .explanation-prose strong {
+    @apply text-zinc-100 font-semibold;
+  }
+  .explanation-prose ul,
+  .explanation-prose ol {
+    @apply text-zinc-300 pl-5 mb-3 space-y-1;
+  }
+  .explanation-prose ul { @apply list-disc; }
+  .explanation-prose ol { @apply list-decimal; }
+  .explanation-prose li { @apply leading-relaxed; }
+  .explanation-prose em { @apply text-zinc-400 italic; }
+  .explanation-prose code {
+    @apply text-violet-300 font-mono text-xs bg-zinc-800 px-1 py-0.5 rounded;
+  }
+  .explanation-prose blockquote {
+    @apply border-l-2 border-violet-500 pl-3 text-zinc-400 italic;
+  }
+}

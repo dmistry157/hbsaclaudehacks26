@@ -4,12 +4,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Running the app
 
+**Streamlit (original):**
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
-streamlit run app.py
+streamlit run app.py         # http://localhost:8501
 ```
 
-The app runs on http://localhost:8501 by default.
+**React frontend + FastAPI backend (new-frontend branch):**
+```bash
+# Terminal 1
+export ANTHROPIC_API_KEY=sk-ant-...
+uvicorn backend.main:app --reload --port 8000
+
+# Terminal 2
+cd frontend && npm run dev   # http://localhost:5173
+```
+
+Vite proxies `/api/*` → `http://localhost:8000` (configured in `frontend/vite.config.js`).
 
 ## Architecture
 
@@ -29,6 +40,14 @@ This is a Streamlit app that explains genetic variants using a multi-API pipelin
 - `generate_explanation()` in `claude_explainer.py` is a generator that yields tokens for streaming display in Streamlit
 - All API calls are synchronous (no async); Streamlit's `st.status` context manager wraps them for UX feedback
 - `variant_parser.py` handles both protein-level (p.Glu6Val) and coding-level (c.5266dupC) HGVS notation; coding positions are approximated to protein position via `coding_pos // 3`
+
+**React frontend (`frontend/`) — new-frontend branch:**
+- `frontend/src/App.jsx` owns all state; calls `/api/analyze` (JSON) then `/api/explain` (SSE stream)
+- `ProteinViewer.jsx` mounts 3Dmol.js (loaded from CDN in `index.html`) via a `useRef` div; fetches PDB text directly from the AlphaFold CDN URL returned by the backend — no Python proxy needed since AlphaFold PDB files have CORS headers
+- `ExplanationPanel.jsx` uses `react-markdown` to render Claude's markdown-formatted output
+- `StatusPipeline.jsx` shows pipeline step progress with framer-motion entrance animations
+- `backend/main.py` uses `sys.path.insert` to import from the repo-root `api/` modules; explanation streaming uses `StreamingResponse` with SSE format (`data: {...}\n\n`)
+- The `tick()` helper in App.jsx yields 120ms between pipeline step updates so React can flush state before the next synchronous fetch begins
 
 ## Demo variants (tested working)
 
